@@ -1,7 +1,8 @@
 __pycache__/
 *.pyc
 .dev-state/
-.cache/
+.cache/*
+!.cache/sing-box-1.14.1/
 *.orig
 *.rej
 *~
