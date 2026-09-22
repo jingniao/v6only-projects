@@ -1,0 +1,22 @@
+# 待验证示例：不保证 AAAA 支持或覆盖全部第三方资源，不自动启用。
+# OpenAI / ChatGPT
+openai.com
+*.openai.com
+chatgpt.com
+*.chatgpt.com
+oaistatic.com
+*.oaistatic.com
+oaiusercontent.com
+*.oaiusercontent.com
+
+# Anthropic / Claude
+anthropic.com
+*.anthropic.com
+claude.ai
+*.claude.ai
+
+# xAI / Grok
+x.ai
+*.x.ai
+grok.com
+*.grok.com

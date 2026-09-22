@@ -1,0 +1,8 @@
+{
+  "version": "2.91",
+  "package_version": "2.91-1+deb13u2",
+  "url": "https://deb.debian.org/debian/pool/main/d/dnsmasq/dnsmasq-base_2.91-1+deb13u2_amd64.deb",
+  "sha256": "fcf9e2d93795a0ca043fd22f0de96748c718b9411a5a48f9c0bb1bdb267d4639",
+  "binary_sha256": "55550c2547fd5d3508519d817a7ef623c2075edc8840aa77567703dffa7dd788",
+  "source": "本机已存在的 Debian trixie apt 软件包索引；仅下载提取，不执行 dpkg 安装或维护脚本。"
+}

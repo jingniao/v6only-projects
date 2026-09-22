@@ -1,0 +1,5 @@
+# 根域与通配分别保留
+OpenAI.COM.
+*.openai.com
+api.anthropic.com  # 精确域名
+xn--bcher-kva.de

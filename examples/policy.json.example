@@ -1,0 +1,23 @@
+{
+  "include_uids": [
+    1000
+  ],
+  "dns_upstream": "192.0.2.53",
+  "dns_port": 1053,
+  "tun_addresses": [
+    "172.31.255.1/30",
+    "fdfe:dcba:9876::1/126"
+  ],
+  "fake_ipv4": "198.18.0.0/15",
+  "fake_ipv6": "fc00::/18",
+  "route_table": 47620,
+  "rule_priority": 12000,
+  "management_cidrs": [],
+  "health_domains": [
+    "api.openai.com"
+  ],
+  "protect_units": [
+    "DynamicV6.service",
+    "dynamicv6.service"
+  ]
+}

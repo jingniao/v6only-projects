@@ -1,0 +1,201 @@
+{
+  "schema": "v6only.singbox-candidate.v1",
+  "backend": "singbox",
+  "backend_version": "1.14.1",
+  "profile": "offline-no-inbounds",
+  "runtime_verified": false,
+  "source_revision": 0,
+  "domains": [
+    "*.anthropic.com",
+    "*.chatgpt.com",
+    "*.claude.ai",
+    "*.grok.com",
+    "*.oaistatic.com",
+    "*.oaiusercontent.com",
+    "*.openai.com",
+    "*.x.ai",
+    "anthropic.com",
+    "chatgpt.com",
+    "claude.ai",
+    "grok.com",
+    "oaistatic.com",
+    "oaiusercontent.com",
+    "openai.com",
+    "x.ai"
+  ],
+  "dns_upstream": "192.0.2.53",
+  "config_sha256": "850fa5a327095c4e058a43e83df9c1e402a0c87eb72751f244cda5c220e8bf30",
+  "config": {
+    "log": {
+      "disabled": true
+    },
+    "dns": {
+      "servers": [
+        {
+          "type": "udp",
+          "tag": "upstream",
+          "server": "192.0.2.53",
+          "server_port": 53
+        }
+      ],
+      "final": "upstream",
+      "strategy": "prefer_ipv6",
+      "reverse_mapping": true
+    },
+    "inbounds": [],
+    "outbounds": [
+      {
+        "type": "direct",
+        "tag": "default",
+        "domain_resolver": {
+          "server": "upstream",
+          "strategy": "prefer_ipv6"
+        }
+      },
+      {
+        "type": "direct",
+        "tag": "strict-ipv6",
+        "domain_resolver": {
+          "server": "upstream",
+          "strategy": "ipv6_only"
+        }
+      }
+    ],
+    "route": {
+      "rules": [
+        {
+          "action": "sniff"
+        },
+        {
+          "type": "logical",
+          "mode": "and",
+          "rules": [
+            {
+              "domain": [
+                "anthropic.com",
+                "chatgpt.com",
+                "claude.ai",
+                "grok.com",
+                "oaistatic.com",
+                "oaiusercontent.com",
+                "openai.com",
+                "x.ai"
+              ],
+              "domain_regex": [
+                "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+anthropic\\.com\\.?$",
+                "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+chatgpt\\.com\\.?$",
+                "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+claude\\.ai\\.?$",
+                "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+grok\\.com\\.?$",
+                "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+oaistatic\\.com\\.?$",
+                "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+oaiusercontent\\.com\\.?$",
+                "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+openai\\.com\\.?$",
+                "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+x\\.ai\\.?$"
+              ]
+            },
+            {
+              "ip_cidr": [
+                "0.0.0.0/0",
+                "::ffff:0:0/96"
+              ]
+            }
+          ],
+          "action": "reject",
+          "method": "default",
+          "no_drop": true
+        },
+        {
+          "domain": [
+            "anthropic.com",
+            "chatgpt.com",
+            "claude.ai",
+            "grok.com",
+            "oaistatic.com",
+            "oaiusercontent.com",
+            "openai.com",
+            "x.ai"
+          ],
+          "domain_regex": [
+            "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+anthropic\\.com\\.?$",
+            "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+chatgpt\\.com\\.?$",
+            "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+claude\\.ai\\.?$",
+            "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+grok\\.com\\.?$",
+            "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+oaistatic\\.com\\.?$",
+            "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+oaiusercontent\\.com\\.?$",
+            "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+openai\\.com\\.?$",
+            "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+x\\.ai\\.?$"
+          ],
+          "action": "resolve",
+          "server": "upstream",
+          "strategy": "ipv6_only"
+        },
+        {
+          "type": "logical",
+          "mode": "and",
+          "rules": [
+            {
+              "domain": [
+                "anthropic.com",
+                "chatgpt.com",
+                "claude.ai",
+                "grok.com",
+                "oaistatic.com",
+                "oaiusercontent.com",
+                "openai.com",
+                "x.ai"
+              ],
+              "domain_regex": [
+                "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+anthropic\\.com\\.?$",
+                "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+chatgpt\\.com\\.?$",
+                "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+claude\\.ai\\.?$",
+                "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+grok\\.com\\.?$",
+                "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+oaistatic\\.com\\.?$",
+                "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+oaiusercontent\\.com\\.?$",
+                "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+openai\\.com\\.?$",
+                "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+x\\.ai\\.?$"
+              ]
+            },
+            {
+              "ip_cidr": [
+                "0.0.0.0/0",
+                "::ffff:0:0/96"
+              ]
+            }
+          ],
+          "action": "reject",
+          "method": "default",
+          "no_drop": true
+        },
+        {
+          "domain": [
+            "anthropic.com",
+            "chatgpt.com",
+            "claude.ai",
+            "grok.com",
+            "oaistatic.com",
+            "oaiusercontent.com",
+            "openai.com",
+            "x.ai"
+          ],
+          "domain_regex": [
+            "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+anthropic\\.com\\.?$",
+            "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+chatgpt\\.com\\.?$",
+            "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+claude\\.ai\\.?$",
+            "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+grok\\.com\\.?$",
+            "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+oaistatic\\.com\\.?$",
+            "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+oaiusercontent\\.com\\.?$",
+            "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+openai\\.com\\.?$",
+            "(?i)^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+x\\.ai\\.?$"
+          ],
+          "action": "route",
+          "outbound": "strict-ipv6"
+        },
+        {
+          "action": "resolve",
+          "server": "upstream",
+          "strategy": "prefer_ipv6"
+        }
+      ],
+      "final": "default"
+    }
+  }
+}

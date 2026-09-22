@@ -1,0 +1,10 @@
+{
+  "version": "1.14.1",
+  "release_url": "https://github.com/SagerNet/sing-box/releases/tag/v1.14.1",
+  "published_at": "2026-09-15T00:06:50Z",
+  "platform": "linux-amd64",
+  "archive_url": "https://github.com/SagerNet/sing-box/releases/download/v1.14.1/sing-box-1.14.1-linux-amd64.tar.gz",
+  "archive_sha256": "12cb2816b52febb356f6a885b740cc8758c3f30b8ae0ca8edba80f0d2d35343f",
+  "archive_member": "sing-box-1.14.1-linux-amd64/sing-box",
+  "signature": "该发布资产列表中未发现独立签名文件；本轮验证 GitHub 官方发布 API 提供的 SHA-256，不声称已验证签名。"
+}
