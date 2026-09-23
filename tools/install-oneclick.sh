@@ -25,7 +25,6 @@ DOMAINS=(
   '*.grok.com'
   '*.identrust.com'
   '*.oaistatic.com'
-  '*.oaiusercontent.com'
   '*.openai.com'
   '*.sora.com'
   '*.x.ai'
@@ -36,7 +35,6 @@ DOMAINS=(
   'grok.com'
   'identrust.com'
   'oaistatic.com'
-  'oaiusercontent.com'
   'openaiapi-site.azureedge.net'
   'sora.com'
   'x.ai'
@@ -58,7 +56,7 @@ usage() {
   使用 sing-box 1.14.1；
   使用 Google DoH（IPv6 bootstrap）；
   使用 google.com 做健康检查；
-  安装 21 条 IPv6-only 分流规则；
+  安装 19 条 IPv6-only 分流规则；
   不启用 UFW、不重启、不修改主机公网 IPv6。
 EOF
 }
@@ -197,7 +195,7 @@ print(json.dumps(policy, ensure_ascii=False, indent=2))
 PY
     say "将复用现有已确认策略（包括管理端 CIDR）"
   else
-    printf '%s\n' "将创建 UID 1500、Google DoH、google.com 健康检查和 21 条规则"
+    printf '%s\n' "将创建 UID 1500、Google DoH、google.com 健康检查和 19 条规则"
   fi
   say "dry-run 完成：未创建用户、未安装依赖、未重写构建产物、未写入状态或规则、未改网络"
   exit 0
@@ -257,7 +255,7 @@ printf '%s\n' "${DOMAINS[@]}" > "$DOMAINS_FILE"
 say "安装计划"
 printf '%s\n' "入口：$ENTRY" "状态目录：$STATE_DIR" "后端：sing-box 1.14.1" "运行用户：$RUN_USER ($RUN_UID)" "规则数：${#DOMAINS[@]}" "DoH：$DNS_UPSTREAM" "健康域名：$HEALTH_DOMAIN" "UFW：保持当前状态，不由本安装器启用"
 
-say "导入 21 条分流规则"
+say "导入 19 条分流规则"
 V6ONLY_STATE_DIR="$STATE_DIR" V6ONLY_ENTRY="$ENTRY" "$ENTRY" import "$DOMAINS_FILE"
 
 ACTION="install"
@@ -316,6 +314,5 @@ printf '%s\n' \
   '后端服务：v6only-singbox.service' \
   '运行用户：v6only-run (UID 1500)' \
   'DNS：127.0.0.1:1053、[::1]:1053，经 Google DoH IPv6 bootstrap' \
-  '规则：21 条，当前不包含 openai.com 根域，仅包含 *.openai.com' \
+  '规则：19 条，当前不包含 openai.com 根域，仅包含 *.openai.com' \
   '安全：UFW 未由安装器启用；请单独设计并验证防火墙规则后再启用' \
-  '注意：oaiusercontent.com 当前可能没有 AAAA，IPv6-only 命中时可能失败'
