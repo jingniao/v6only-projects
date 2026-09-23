@@ -11,6 +11,7 @@ import shutil
 import socket
 import subprocess
 import time
+from urllib.parse import parse_qsl, urlsplit
 
 
 class HostError(Exception):
@@ -95,9 +96,21 @@ def validate_policy(policy):
             raise ValueError
         if uids != sorted(set(uids)):
             raise ValueError
-        address = ipaddress.ip_address(policy["dns_upstream"])
-        if address.is_unspecified or address.is_multicast or address.is_link_local or address.is_loopback or getattr(address, "ipv4_mapped", None):
-            raise ValueError
+        try:
+            address = ipaddress.ip_address(policy["dns_upstream"])
+            if address.is_unspecified or address.is_multicast or address.is_link_local or address.is_loopback or getattr(address, "ipv4_mapped", None):
+                raise ValueError
+        except ValueError:
+            parsed = urlsplit(policy["dns_upstream"])
+            query = parse_qsl(parsed.query, keep_blank_values=True, strict_parsing=True)
+            if (parsed.scheme != "https" or parsed.username or parsed.password or parsed.fragment or
+                    parsed.port not in {None, 443} or not parsed.hostname or parsed.path != "/dns-query" or
+                    len(query) != 1 or query[0][0] != "bootstrap" or
+                    not re.fullmatch(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}", parsed.hostname.lower())):
+                raise ValueError
+            bootstrap = ipaddress.ip_address(query[0][1])
+            if bootstrap.is_unspecified or bootstrap.is_multicast or bootstrap.is_link_local or bootstrap.is_loopback or getattr(bootstrap, "ipv4_mapped", None):
+                raise ValueError
         if any(type(policy[key]) is not int for key in ("dns_port", "route_table", "rule_priority")):
             raise ValueError
         if not 1024 <= policy["dns_port"] <= 65533 or not 10000 <= policy["route_table"] <= 2 ** 31 or not 1000 <= policy["rule_priority"] <= 30000:
@@ -641,6 +654,7 @@ class SandboxHost(Host):
 
     def wait_settled(self, policy, deadline=None, **kwargs):
         self.events.append(("wait_settled",))
+        return True
 
     def nft_replace(self, name, content):
         self.events.append(("nft", name))

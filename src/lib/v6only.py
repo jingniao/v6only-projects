@@ -557,9 +557,24 @@ def run(args, p):
         print(json.dumps(result, ensure_ascii=False, indent=2))
     elif command == "status":
         data = store.read()
-        if data["domains"]:
-            print(f"待应用规则：{len(data['domains'])}；修订：{data['revision']}。")
-        print(json.dumps(manager().status(), ensure_ascii=False))
+        runtime_status = manager().status()
+        runtime_domains = set()
+        runtime_path = store.root / "runtime.json"
+        try:
+            if runtime_path.is_file():
+                runtime_data = json.loads(runtime_path.read_text(encoding="utf-8"))
+                runtime_domains = set(runtime_data.get("domains", []))
+        except (OSError, ValueError, TypeError):
+            runtime_domains = set()
+        configured_domains = set(data.get("domains", []))
+        added = sorted(configured_domains - runtime_domains)
+        removed = sorted(runtime_domains - configured_domains)
+        print(f"当前规则：{len(configured_domains)}；待应用新增：{len(added)}；待删除：{len(removed)}；修订：{data['revision']}。")
+        if added:
+            print("待应用新增规则：" + ", ".join(added))
+        if removed:
+            print("待应用删除规则：" + ", ".join(removed))
+        print(json.dumps(runtime_status, ensure_ascii=False))
     elif command == "check":
         if dry:
             print("本地清单结构校验通过；计划检查归属资源及已启用服务的 DNS/TLS，不执行外部命令或写日志。")
@@ -613,54 +628,178 @@ def run(args, p):
     return 0
 
 
+def _menu_pause():
+    try:
+        input("\n按回车返回菜单...")
+    except EOFError:
+        pass
+
+
+def _menu_exec(p, argv):
+    """Run one existing CLI command from the menu without creating a second code path."""
+    try:
+        return run(p.parse_args(argv), p)
+    except (Failure, SINGBOX.BackendFailure, DNSMASQ.BackendFailure,
+            TRANSACTIONS.TransactionError, HOST.HostError, RUNTIME.RuntimeError) as exc:
+        print(f"操作失败：{exc}", file=sys.stderr)
+        return getattr(exc, "code", 1)
+    except (OSError, EOFError) as exc:
+        print(f"操作失败：{type(exc).__name__}；请检查权限或输入。", file=sys.stderr)
+        return 1
+
+
+def _menu_confirm(prompt, phrase):
+    answer = input(f"{prompt}\n请输入 {phrase} 确认，其他输入取消：").strip()
+    return answer == phrase
+
+
+def _menu_domains(prompt):
+    raw = input(prompt).strip()
+    if not raw:
+        return []
+    # 菜单输入只接受空格/逗号分隔的域名，不经过 shell。
+    return [x for x in re.split(r"[\s,]+", raw) if x]
+
+
+def _menu_install(p):
+    """Prefer the tested one-click installer when the source tree is present."""
+    installer = Path("/root/v6only/tools/install-oneclick.sh")
+    if installer.is_file() and os.access(installer, os.X_OK):
+        print("将调用已验证的一键安装/修复器。")
+        peer = ""
+        try:
+            runtime = json.loads(Path("/var/lib/v6only/runtime.json").read_text(encoding="utf-8"))
+            cidrs = (runtime or {}).get("policy", {}).get("management_cidrs", [])
+            if cidrs:
+                peer = str(cidrs[0]).split("/")[0]
+        except Exception:
+            pass
+        command = [str(installer)]
+        if peer:
+            command += ["--ssh-peer", peer]
+        result = subprocess.run(command, text=True)
+        return result.returncode
+    print("未找到 /root/v6only/tools/install-oneclick.sh。")
+    print("请使用：v6only install --backend singbox --policy <策略文件> --entry <发行入口>")
+    return 3
+
+
+def _menu_persistence():
+    db = Path("/var/lib/v6only/v6only.db")
+    if not db.exists():
+        print("SQLite 数据库不存在：", db)
+        return
+    code = (
+        "import sqlite3,os,stat; "
+        "p='/var/lib/v6only/v6only.db'; c=sqlite3.connect(p); "
+        "print('数据库:',p); print('大小:',os.path.getsize(p),'bytes'); "
+        "print('完整性:',c.execute('PRAGMA integrity_check').fetchone()[0]); "
+        "print('最近采集:',c.execute(\"select value from meta where key='last_collected_at'\").fetchone()); "
+        "print('规则:',c.execute('select count(*) from rules where snapshot_id=(select max(id) from snapshots)').fetchone()[0]); "
+        "print('健康:',c.execute('select ok from health_checks order by id desc limit 1').fetchone()); c.close()"
+    )
+    subprocess.run(["python3", "-c", code], check=False)
+    subprocess.run(["systemctl", "is-enabled", "v6only-persist.timer"], check=False)
+    subprocess.run(["systemctl", "list-timers", "v6only-persist.timer", "--all", "--no-pager"], check=False)
+
+
 def interactive(p):
-    print("v6only 中文菜单\n1. 查看待应用清单\n2. 添加域名\n3. 删除域名\n4. 导入清单\n5. 导出清单\n6. 配置预览\n7. 本地与运行状态\n8. 帮助\n9. 安装\n10. 应用\n11. 确认当前事务\n12. 切换后端\n13. 域名网络测试\n14. 健康检查\n15. 环境诊断\n16. 日志\n17. 历史\n18. 升级\n19. 重装\n20. 停用\n21. 启用\n22. 回滚\n23. 卸载\n24. 清理\n25. 版本\n0. 退出")
-    choice = input("请选择：").strip()
-    commands = {"1": ["list"], "2": ["add"], "3": ["remove"], "4": ["import"], "5": ["export"],
-                "6": ["apply", "--dry-run"], "7": ["status"], "8": ["help"], "9": ["install"], "10": ["apply"],
-                "11": ["confirm"], "12": ["backend", "use"], "13": ["test"], "14": ["check"], "15": ["doctor"],
-                "16": ["logs"], "17": ["history"], "18": ["update"], "19": ["reinstall"], "20": ["disable"],
-                "21": ["enable"], "22": ["rollback"], "23": ["uninstall"], "24": ["purge"], "25": ["version"]}
-    if choice == "0":
-        return 0
-    if choice not in commands:
-        raise Failure("无效的菜单选项。", 2)
-    argv = commands[choice]
-    if choice in {"2", "3", "4", "5", "13"}:
-        argv.append(input("请输入域名或文件路径（无需 shell 引号）：").strip())
-    if choice in {"9", "12"}:
-        selected = input("后端（singbox/dnsmasq，默认 singbox）：").strip() or "singbox"
-        argv += (["--backend", selected] if choice == "9" else [selected])
-    if choice == "9":
-        argv += ["--policy", input("网络策略文件路径（参考 examples/policy.json.example）：").strip()]
-        current = Path(os.environ.get("V6ONLY_ENTRY", ""))
-        built = current.parent.parent / "dist/v6only"
-        argv += ["--entry", str(built if current.name == "v6only.sh" and built.is_file() else current)]
-    if choice == "24":
-        if input("保留日志？输入 y 保留，默认清理：").strip().lower() == "y":
-            argv.append("--keep-logs")
-    if choice in {"9", "10", "12", "18", "19", "20", "21", "22", "23", "24"}:
-        run(p.parse_args([*argv, "--dry-run"]), p)
-        if choice == "24":
-            if input("输入 清理项目数据 确认不可恢复的清理，其他输入取消：").strip() != "清理项目数据":
-                return 0
-            argv.append("--yes")
-        else:
-            backend = selected if choice in {"9", "12"} else manager().read()["backend"]
-            if choice in {"20", "22", "23"}:
-                phrase = "确认网络变更"
-            elif backend == "dnsmasq":
-                print("DNS 约束模式不能提供 TUN IPv6-only 出站的同等保障。")
-                phrase = "确认DNS降级"
-                argv.append("--accept-dns-downgrade")
+    """Interactive menu. All actual work is delegated to the existing CLI/transaction code."""
+    while True:
+        print("\n========== v6only 管理菜单 ==========")
+        print(" 1. 查看当前状态")
+        print(" 2. 添加分流规则")
+        print(" 3. 删除分流规则")
+        print(" 4. 查看当前规则")
+        print(" 5. 应用待处理规则")
+        print(" 6. 查看健康检查")
+        print(" 7. 查看运行日志")
+        print(" 8. 查看变更历史")
+        print(" 9. 安装 v6only")
+        print("10. 卸载 v6only（保留数据）")
+        print("11. 重装/修复 v6only")
+        print("12. 更新已验证组件")
+        print("13. 启用分流")
+        print("14. 停用分流")
+        print("15. 回滚最近事务")
+        print("16. 查看 UFW 兼容状态")
+        print("17. 查看数据持久化状态")
+        print("18. 完全清理（危险）")
+        print("19. 版本")
+        print(" 0. 退出")
+        print("====================================")
+        try:
+            choice = input("请选择：").strip()
+        except EOFError:
+            return 0
+        if choice == "0":
+            return 0
+
+        if choice == "1":
+            _menu_exec(p, ["status"])
+        elif choice == "2":
+            domains = _menu_domains("输入域名，多个域名用空格或逗号分隔：")
+            if domains:
+                _menu_exec(p, ["add", *domains])
+        elif choice == "3":
+            domains = _menu_domains("输入要删除的规则，多个规则用空格或逗号分隔：")
+            if domains:
+                _menu_exec(p, ["remove", *domains])
+        elif choice == "4":
+            _menu_exec(p, ["list"])
+        elif choice == "5":
+            print("先执行预览：")
+            _menu_exec(p, ["apply", "--dry-run"])
+            if _menu_confirm("将提交网络配置并进行健康检查。", "APPLY-V6ONLY"):
+                _menu_exec(p, ["apply", "--accept-network-change", "--accept-broad-ipv4-block"])
+        elif choice == "6":
+            _menu_exec(p, ["check"])
+            if Path("/usr/local/sbin/v6only-ufw-compat").exists():
+                subprocess.run(["/usr/local/sbin/v6only-ufw-compat", "check"], check=False)
+        elif choice == "7":
+            print("1. v6only 服务日志  2. 健康/审计日志  3. 返回")
+            kind = input("请选择：").strip()
+            if kind == "1":
+                _menu_exec(p, ["logs", "service", "--limit", "80"])
+            elif kind == "2":
+                _menu_exec(p, ["logs", "health", "--limit", "80"])
+        elif choice == "8":
+            _menu_exec(p, ["history"])
+        elif choice == "9":
+            _menu_install(p)
+        elif choice == "10":
+            if _menu_confirm("将停止分流并恢复网络；规则和 SQLite 数据保留。", "UNINSTALL-V6ONLY"):
+                _menu_exec(p, ["uninstall", "--accept-network-change"])
+        elif choice == "11":
+            if _menu_confirm("将重装/修复运行组件，保留规则与数据。", "REINSTALL-V6ONLY"):
+                _menu_exec(p, ["reinstall", "--accept-network-change", "--accept-broad-ipv4-block"])
+        elif choice == "12":
+            if _menu_confirm("将更新到项目支持的已验证组件版本。", "UPDATE-V6ONLY"):
+                _menu_exec(p, ["update", "--accept-network-change", "--accept-broad-ipv4-block"])
+        elif choice == "13":
+            if _menu_confirm("将启用 IPv6-only 分流和故障保护。", "ENABLE-V6ONLY"):
+                _menu_exec(p, ["enable", "--accept-network-change", "--accept-broad-ipv4-block"])
+        elif choice == "14":
+            if _menu_confirm("将停用分流，但保留规则和配置。", "DISABLE-V6ONLY"):
+                _menu_exec(p, ["disable", "--accept-network-change"])
+        elif choice == "15":
+            if _menu_confirm("将恢复最近一次网络事务，可能改变分流状态。", "ROLLBACK-V6ONLY"):
+                _menu_exec(p, ["rollback", "--accept-network-change"])
+        elif choice == "16":
+            if Path("/usr/local/sbin/v6only-ufw-compat").exists():
+                subprocess.run(["/usr/local/sbin/v6only-ufw-compat", "check"], check=False)
             else:
-                print("故障保护可能阻断选定用户更广泛的非管理 IPv4 流量。")
-                phrase = "确认IPv4故障保护"
-                argv.append("--accept-broad-ipv4-block")
-            if input("输入 " + phrase + " 执行上述网络变更，其他输入取消：").strip() != phrase:
-                return 0
-            argv.append("--accept-network-change")
-    return run(p.parse_args(argv), p)
+                print("UFW 兼容检查器未安装。")
+        elif choice == "17":
+            _menu_persistence()
+        elif choice == "18":
+            if _menu_confirm("将删除 v6only 运行组件、规则、历史及数据库，通常不可恢复。", "PURGE-V6ONLY"):
+                _menu_exec(p, ["purge", "--yes"])
+        elif choice == "19":
+            _menu_exec(p, ["version"])
+        else:
+            print("无效的菜单选项。")
+        _menu_pause()
 
 
 def main():

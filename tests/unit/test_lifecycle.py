@@ -44,6 +44,14 @@ class LifecycleTests(unittest.TestCase):
         repeated = self.manager.execute("install", [], policy=self.policy, broad=True)
         self.assertFalse(repeated["changed"])
 
+    def test_owned_entry_is_updated_from_a_new_verified_artifact(self):
+        self.install()
+        updated = b"#!/usr/bin/env bash\n# V6ONLY_PY_SIMULATION_UPDATED\n"
+        self.entry.write_bytes(updated)
+        state = self.manager.read()
+        self.manager.bootstrap(self.entry, state, refresh=True)
+        self.assertEqual((self.root / "usr/local/sbin/v6only").read_bytes(), updated)
+
     def test_wrong_confirmation_never_cancels_other_timer(self):
         result = self.install(False)
         self.host.timers["other"] = "其他项目定时器"

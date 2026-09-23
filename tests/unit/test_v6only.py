@@ -176,7 +176,7 @@ class CLITests(unittest.TestCase):
                                    stderr=slave, env=self.env)
         os.close(slave)
         try:
-            os.write(master, b"2\nOpenAI.COM.\n")
+            os.write(master, b"2\nOpenAI.COM.\n\n0\n")
             process.wait(timeout=10)
             self.assertEqual(process.returncode, 0)
             self.assertEqual(self.cli("list").stdout, "openai.com\n")

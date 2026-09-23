@@ -1,7 +1,4 @@
-"""sing-box 1.14.1 候选配置：仅静态校验，不提供启动或网络接管接口。
-
-字段依据与源代码核验记录见 docs/singbox-candidates.md。
-"""
+"""sing-box 1.14.1 candidate configuration and runtime configuration."""
 import copy
 import hashlib
 import ipaddress
@@ -12,6 +9,7 @@ import re
 import stat
 import subprocess
 import tempfile
+from urllib.parse import parse_qsl, urlsplit
 
 SINGBOX_VERSION = "1.14.1"
 CANDIDATE_SCHEMA = "v6only.singbox-candidate.v1"
@@ -39,8 +37,32 @@ def dns_address(value):
         raise BackendFailure("DNS 上游须为单个 IPv4/IPv6 地址，不接受端口、URL、作用域、组播或未指定地址。", 2)
 
 
+def runtime_dns_server(value):
+    """Build a runtime DNS server; offline candidates deliberately remain IP-only."""
+    try:
+        address = dns_address(value)
+        return {"type": "udp", "tag": "upstream", "server": address, "server_port": 53}
+    except BackendFailure:
+        pass
+    try:
+        parsed = urlsplit(value)
+        query = parse_qsl(parsed.query, keep_blank_values=True, strict_parsing=True)
+        if (parsed.scheme != "https" or parsed.username or parsed.password or parsed.fragment or
+                parsed.port not in {None, 443} or not parsed.hostname or parsed.path != "/dns-query" or
+                len(query) != 1 or query[0][0] != "bootstrap"):
+            raise ValueError
+        host = parsed.hostname.lower()
+        if not re.fullmatch(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}", host):
+            raise ValueError
+        bootstrap = dns_address(query[0][1])
+        return {"type": "https", "tag": "upstream", "server": bootstrap, "server_port": 443,
+                "path": "/dns-query", "tls": {"enabled": True, "server_name": host}}
+    except (TypeError, ValueError):
+        raise BackendFailure("运行 DNS 上游须为单个 IP，或 https://域名/dns-query?bootstrap=单个IP。", 2)
+
+
 def domain_matcher(domains):
-    """用带锚点的 RE2 兼容正则表达仅子域，避免后缀规则包含根域。"""
+    """Use anchored RE2-compatible expressions for wildcard subdomains only."""
     exact, wildcard = [], []
     label = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
     for domain in domains:
@@ -57,12 +79,11 @@ def domain_matcher(domains):
 
 
 def render(domains, revision, upstream):
-    """调用方先规范化域名；不查询 DNS、不读写文件。"""
+    """Render an offline candidate. It performs no network or filesystem operations."""
     upstream = dns_address(upstream)
     matcher = domain_matcher(domains)
     rules = [{"action": "sniff"}]
     if matcher:
-        # 默认规则中 domain 与 ip_cidr 是 OR；必须使用逻辑 AND，防止扩大阻断。
         guard = {"type": "logical", "mode": "and",
                  "rules": [copy.deepcopy(matcher), {"ip_cidr": ["0.0.0.0/0", "::ffff:0:0/96"]}],
                  "action": "reject", "method": "default", "no_drop": True}
@@ -91,7 +112,7 @@ def render(domains, revision, upstream):
 
 
 def verify_candidate(candidate, normalize):
-    """只允许本版本生成的无入口配置，避免 check 构造实例时产生额外副作用。"""
+    """Only accept a regenerated offline candidate for the pinned sing-box version."""
     try:
         if not isinstance(candidate, dict):
             raise ValueError
@@ -143,7 +164,6 @@ def probe(binary):
 def validate(candidate, binary, normalize):
     candidate = verify_candidate(candidate, normalize)
     information = probe(binary)
-    # 不向外部校验器传递原始候选；只传严格重新生成的纯配置。
     with tempfile.TemporaryDirectory(prefix="v6only-check-") as directory:
         path = Path(directory) / "config.json"
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -151,7 +171,6 @@ def validate(candidate, binary, normalize):
             stream.write(canonical(candidate["config"]))
         result = invoke(information["binary"], ["check", "-c", str(path)], cwd=directory)
     if result.returncode:
-        # 输出保持分类明确；内部配置不含原始凭据或文件路径。
         raise BackendFailure("sing-box 官方配置校验失败；未应用候选配置。\n" + result.stdout[:8192])
     return {**information, "config_sha256": candidate["config_sha256"], "syntax_checked": True,
             "checker_output": result.stdout[:8192], "network_changed": False,
@@ -159,14 +178,14 @@ def validate(candidate, binary, normalize):
 
 
 def runtime_config(domains, policy):
-    """实验运行配置；仅由经过事务和前置检查的生命周期管理器使用。"""
-    config = render(domains, 0, policy["dns_upstream"])["config"]
+    """Build the TUN/FakeIP configuration for the transactional lifecycle manager."""
+    config = render(domains, 0, "192.0.2.53")["config"]
+    config["dns"]["servers"] = [runtime_dns_server(policy["dns_upstream"])]
     config["log"] = {"level": "warn", "timestamp": True}
     config["experimental"] = {"cache_file": {"enabled": True, "path": "/var/lib/v6only/singbox-cache.db", "cache_id": "v6only", "store_fakeip": True}}
     config["dns"]["servers"].append({"type": "fakeip", "tag": "fakeip", "inet4_range": policy["fake_ipv4"], "inet6_range": policy["fake_ipv6"]})
     matcher = domain_matcher(domains)
     config["dns"]["rules"] = ([{**copy.deepcopy(matcher), "query_type": ["HTTPS", "SVCB"], "action": "predefined", "rcode": "NOERROR"}] if matcher else [])
-    # 仅纳入 UID 的普通 DNS 查询会到达此前端；统一 FakeIP 让默认双栈策略也能在出站执行。
     config["dns"]["rules"].append({"query_type": ["A", "AAAA"], "action": "route", "server": "fakeip"})
     config["inbounds"] = [
         {"type": "direct", "tag": "dns-v4", "listen": "127.0.0.1", "listen_port": policy["dns_port"]},
@@ -178,17 +197,14 @@ def runtime_config(domains, policy):
     ]
     config["route"]["rules"].insert(0, {"inbound": ["dns-v4", "dns-v6"], "action": "hijack-dns"})
     config["route"]["auto_detect_interface"] = True
-    # 控制进程 UID 0 不被接管；不绑定当前动态 IPv6 或历史网卡名称。
     return config
 
 
 def validate_runtime(domains, policy, binary):
     config = runtime_config(domains, policy)
     probe(binary)
-    # 构造校验期间关闭日志，避免校验输出含连接信息；不启动配置中的入口。
     config["log"] = {"disabled": True}
     with tempfile.TemporaryDirectory(prefix="v6only-runtime-check-") as directory:
-        # 校验器构造实例时也只能接触私有暂存缓存，不能打开真实运行数据库。
         config["experimental"]["cache_file"]["path"] = str(Path(directory) / "cache.db")
         path = Path(directory) / "config.json"
         path.write_text(canonical(config), encoding="utf-8")

@@ -48,6 +48,24 @@ class CandidateTests(unittest.TestCase):
             with self.subTest(address=address), self.assertRaises(backend.BackendFailure):
                 backend.render([], 0, address)
 
+    def test_runtime_doh_requires_pinned_bootstrap(self):
+        server = backend.runtime_dns_server("https://dns.google/dns-query?bootstrap=2001:4860:4860::8844")
+        self.assertEqual(server["type"], "https")
+        self.assertEqual(server["server"], "2001:4860:4860::8844")
+        self.assertEqual(server["tls"]["server_name"], "dns.google")
+        for value in ["https://dns.google/dns-query", "http://dns.google/dns-query?bootstrap=1.1.1.1",
+                      "https://dns.google/other?bootstrap=1.1.1.1", "https://dns.google/dns-query?bootstrap=fe80::1",
+                      "https://dns.google/dns-query?bootstrap=1.1.1.1&x=1"]:
+            with self.subTest(value=value), self.assertRaises(backend.BackendFailure):
+                backend.runtime_dns_server(value)
+
+    def test_runtime_config_accepts_strict_doh_policy(self):
+        policy = v6.HOST.policy_defaults()
+        policy.update(include_uids=[1000], health_domains=["google.com"],
+                      dns_upstream="https://dns.google/dns-query?bootstrap=2001:4860:4860::8844")
+        self.assertEqual(v6.HOST.validate_policy(policy)["dns_upstream"], policy["dns_upstream"])
+        self.assertEqual(backend.runtime_config([], policy)["dns"]["servers"][0]["type"], "https")
+
     def test_no_runtime_resources_or_legacy_fields(self):
         candidate = self.candidate()
         config = candidate["config"]

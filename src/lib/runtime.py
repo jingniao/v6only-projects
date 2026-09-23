@@ -121,11 +121,20 @@ class Manager:
             conflicts.append("kernel:规则/路由/地址")
         return conflicts
 
-    def bootstrap(self, entry, state):
+    def bootstrap(self, entry, state, refresh=False):
         target = self.root / "usr/local/sbin/v6only"
         if state["entry_sha256"]:
             if target.is_symlink() or not target.is_file() or target.stat().st_mode & 0o022 or self.tx.digest(target) != state["entry_sha256"]:
                 raise RuntimeError("管理入口被外部修改，拒绝覆盖。", 5)
+            if refresh and entry and Path(entry).is_file():
+                content = Path(entry).read_bytes()
+                if not content.startswith(b"#!/usr/bin/env bash") or b"V6ONLY_PY_" not in content:
+                    raise RuntimeError("安装入口必须是本项目生成的单文件发行产物。")
+                digest = hashlib.sha256(content).hexdigest()
+                if digest != state["entry_sha256"]:
+                    self.tx.atomic_bytes(target, content, 0o755)
+                    state["entry_sha256"] = digest
+                    self.write(state)
             return
         if target.exists() or target.is_symlink():
             if (not target.is_symlink() and entry and Path(entry).is_file() and
@@ -294,7 +303,7 @@ class Manager:
             report = self.host.inspect()
             bootstrap_report = dict(report, missing_tools=[x for x in report["missing_tools"] if x not in {"ip", "nft"}])
             self.host.require_supported(bootstrap_report, require_tun=turning_on and backend == "singbox")
-            self.bootstrap(entry, before)
+            self.bootstrap(entry, before, refresh=action == "install")
             pending_path = self.directory / "state.json"
             if action == "install" and not pending_path.exists():
                 if pending_state is None:
@@ -441,7 +450,12 @@ class Manager:
                         self.host.service(service, "enable")
                         self.host.service(service, "start")
                     self.host.wait_ready(after, transaction["deadline"])
-                    after["kernel_snapshot"] = self.host.kernel_snapshot(policy) if backend == "singbox" else None
+                    if backend == "singbox":
+                        if not self.host.wait_settled(policy, deadline=transaction["deadline"]):
+                            raise RuntimeError("TUN 路由未在限定时间内稳定，已拒绝提交临时网络变更。", 4)
+                        after["kernel_snapshot"] = self.host.kernel_snapshot(policy)
+                    else:
+                        after["kernel_snapshot"] = None
                 else:
                     transaction["nft_phase"] = "changing"
                     self.journal.save(transaction)
